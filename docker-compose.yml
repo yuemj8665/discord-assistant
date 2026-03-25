@@ -1,0 +1,25 @@
+services:
+  dozzle:
+    image: amir20/dozzle:latest
+    restart: unless-stopped
+    ports:
+      - "9999:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  discord-assistant:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Claude CLI 인증 정보 (호스트 재사용)
+      - ~/.claude:/root/.claude
+      # 세션 영속성 (컨테이너 재시작해도 세션 유지)
+      - ./data:/app/data
+    # 로그 크기 제한
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

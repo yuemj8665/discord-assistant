@@ -1,0 +1,17 @@
+# Discord
+discord.py>=2.3.0
+
+# 설정
+python-dotenv>=1.0.0
+
+# Google Calendar API
+google-api-python-client>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.2.0
+
+# MCP (Model Context Protocol) 서버
+mcp>=1.0.0
+
+# 시스템 모니터링
+psutil>=5.9.0
+feedparser>=6.0.0
