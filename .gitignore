@@ -1,0 +1,49 @@
+# 환경변수 (절대 커밋 금지)
+.env
+
+# Google OAuth 인증 정보 (절대 커밋 금지)
+credentials.json
+token.json
+
+# 자동 생성 파일 (봇 시작 시 .env 기반으로 생성됨)
+mcp_config.json
+
+# 세션 데이터 (Claude 세션 ID 포함)
+data/
+
+# 로그 파일
+logs/
+
+# Claude Code 로컬 설정
+.claude/
+
+# Claude 메모리 (로컬 전용)
+memory/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# 임시 오디오 파일
+/tmp/discord_tts/
+*.mp3
+*.wav
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 로컬 전용 문서 (CLAUDE.md 규칙)
+CLAUDE.md
+process_personal.md
+
+# 테스트 캐시
+.pytest_cache/
+.coverage
