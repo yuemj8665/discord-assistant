@@ -7,6 +7,7 @@ from src.handlers.text_handler import TextHandler
 from src.scheduler.infra_scheduler import InfraScheduler
 from src.scheduler.news_scheduler import NewsScheduler
 from src.scheduler.notification_scheduler import NotificationScheduler
+from src.scheduler.session_scheduler import SessionScheduler
 from src.services.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ def register_events(
     scheduler = NotificationScheduler(bot, general_llm)
     infra_scheduler = InfraScheduler(bot, infra_llm)
     news_scheduler = NewsScheduler(bot, news_llm)
+    session_scheduler = SessionScheduler(bot)
 
     @bot.event
     async def on_ready() -> None:
@@ -38,6 +40,7 @@ def register_events(
         scheduler.start()
         infra_scheduler.start()
         news_scheduler.start()
+        session_scheduler.start()
 
     @bot.event
     async def on_message(message: discord.Message) -> None:
@@ -75,3 +78,4 @@ def register_events(
             return
         async with ctx.typing():
             await news_scheduler.send_now()
+

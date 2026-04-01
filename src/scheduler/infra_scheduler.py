@@ -24,7 +24,7 @@ def _analysis_prompt() -> str:
         f"[현재 시각: {_now_str()}] "
         "현재 홈서버 상태를 분석해줘. "
         "get_server_resources와 get_docker_containers 도구를 호출해서 "
-        "데이터를 수집한 뒤, 마크다운 표 형식으로 분석 결과를 정리해줘."
+        "데이터를 수집한 뒤, Discord 채팅에 최적화된 형식으로 분석 결과를 정리해줘."
     )
 
 
@@ -94,7 +94,7 @@ class InfraScheduler:
                 f"CPU: `{res.cpu:.1f}%` / 메모리: `{res.memory:.1f}%` / 디스크: `{res.disk:.1f}%`"
             )
 
-    # ── 아침 9시 일일 리포트 루프 ─────────────────────────────────────────────
+    # ── 아침 일일 리포트 루프 ─────────────────────────────────────────────────
 
     async def _daily_report_loop(self) -> None:
         while self._running:
@@ -102,7 +102,9 @@ class InfraScheduler:
             try:
                 now = datetime.now(KST)
                 today = now.strftime("%Y-%m-%d")
-                if now.hour == 9 and self._last_report_date != today:
+                if (now.hour == config.INFRA_DAILY_REPORT_HOUR
+                        and now.minute >= config.INFRA_DAILY_REPORT_MINUTE
+                        and self._last_report_date != today):
                     self._last_report_date = today
                     await self._send_daily_report()
             except Exception as e:

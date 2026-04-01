@@ -437,6 +437,38 @@ creds = Credentials(
 
 ---
 
+## [2026-04-01] 봇 이중 응답 (프로세스 2개 동시 실행)
+
+### 증상
+Discord 메시지 하나에 응답이 2번씩 발송됨.
+
+### 원인
+`launchctl kickstart -k` 명령은 launchd가 관리하는 프로세스만 종료하고 재시작함.
+터미널에서 직접 실행한 `python main.py` 프로세스(PID 38060)는 launchd 외부에 있으므로 종료되지 않음.
+결과적으로 두 프로세스가 동일한 Discord 봇 토큰으로 동시 연결되어 모든 이벤트를 각각 처리함.
+
+### 확인 방법
+```bash
+ps aux | grep "main.py" | grep -v grep
+```
+프로세스가 2개 이상이면 이중 응답 상태.
+
+### 대처
+```bash
+kill <수동실행PID>
+```
+또는 재시작 전 전체 정리:
+```bash
+pkill -f "main.py" && launchctl kickstart -k gui/$(id -u)/com.mamyeongjae.discord-assistant
+```
+
+### 교훈
+- 봇은 launchd 하나로만 관리하고, 터미널에서 직접 `python main.py` 실행 금지.
+- 재시작이 필요하면 반드시 `launchctl kickstart -k` 만 사용.
+- 이상 증상 발생 시 `ps aux | grep main.py` 로 프로세스 수 먼저 확인.
+
+---
+
 ## [2026-03-23] LLM 요일 계산 오류 (날짜만으로 요일 역산 실패)
 
 ### 증상

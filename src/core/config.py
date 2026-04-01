@@ -24,6 +24,7 @@ class Config:
     # 채널 → 세션 매핑
     GENERAL_CHANNEL_ID: int = int(os.getenv("GENERAL_CHANNEL_ID", "0"))
     CALENDAR_CHANNEL_ID: int = int(os.getenv("CALENDAR_CHANNEL_ID", "0"))
+    SESSION_CHANNEL_ID: int = int(os.getenv("SESSION_CHANNEL_ID", "0"))
 
     # 알림 설정
     NOTIFY_CHANNEL_ID: int = int(os.getenv("NOTIFY_CHANNEL_ID", "0"))
@@ -41,6 +42,8 @@ class Config:
     INFRA_MEMORY_THRESHOLD: int = int(os.getenv("INFRA_MEMORY_THRESHOLD", "85"))
     INFRA_DISK_THRESHOLD: int = int(os.getenv("INFRA_DISK_THRESHOLD", "90"))
     INFRA_CHECK_INTERVAL: int = int(os.getenv("INFRA_CHECK_INTERVAL", "300"))
+    INFRA_DAILY_REPORT_HOUR: int = int(os.getenv("INFRA_DAILY_REPORT_HOUR", "6"))
+    INFRA_DAILY_REPORT_MINUTE: int = int(os.getenv("INFRA_DAILY_REPORT_MINUTE", "15"))
 
     # MCP
     MCP_CONFIG_PATH: str = str(PROJECT_ROOT / "mcp_config.json")
