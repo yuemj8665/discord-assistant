@@ -339,6 +339,65 @@ memory/
 
 ---
 
+## [2026-04-01] !claude 기능 제거 + 이중 응답 버그 수정
+
+### 제거
+- `src/services/claude_usage_service.py` — Claude Code 토큰 사용량 파싱 서비스 전체 삭제
+- `src/bot/events.py` — `!claude` 커맨드 + `asyncio`/`claude_usage_service` import 제거
+- `src/core/config.py` — `CLAUDE_SESSION_LIMIT`, `CLAUDE_WEEKLY_LIMIT` 제거
+- `src/mcp/infra_server.py` — `get_claude_usage` MCP 도구 및 관련 import 제거
+- `src/scheduler/infra_scheduler.py` — `_check_claude_usage` 메서드 및 상태 변수 제거
+- `src/services/llm_service.py` — infra 역할 allowed_tools에서 `mcp__infra__get_claude_usage` 제거
+- `.env.example` — `CLAUDE_SESSION_LIMIT`, `CLAUDE_WEEKLY_LIMIT` 섹션 제거
+
+### 수정
+- `src/services/llm_service.py` — `_build_command()`에 `--dangerously-skip-permissions` 플래그 추가 (자동화 환경에서 권한 확인 생략)
+
+### 버그 수정
+- 이중 응답 현상 수정: launchd 외부에서 수동 실행된 구 프로세스(PID 38060)와 launchd 관리 프로세스(PID 76419)가 동시에 실행되어 모든 메시지에 응답이 2회씩 발송되던 문제 해결 (수동 프로세스 강제 종료)
+
+---
+
+## [2026-04-01] Claude Code 세션 스케줄링 도입
+
+### 추가
+- `src/scheduler/session_scheduler.py` — Claude Code 세션 라인 시작/종료 자동 관리
+  - Session Line 1: 01:30 시작 (만료 06:30)
+  - Session Line 2: 07:00 시작 (만료 12:00)
+  - Session Line 3: 13:00 시작 (만료 18:00)
+  - 시작 시: `claude -p "ping"` subprocess 직접 호출로 세션 워밍업 + 세션 채널에 시작 알림
+  - 종료 시: 세션 채널에 만료 알림
+- `src/core/config.py` — `SESSION_CHANNEL_ID` 추가
+- `.env` / `.env.example` — `SESSION_CHANNEL_ID` 추가
+
+### 수정
+- `src/bot/events.py` — `SessionScheduler` 등록
+- `src/services/session_manager.py` — session 채널 등록
+- `src/scheduler/infra_scheduler.py` — 기존 워밍업 로직(`_session_warmup_loop`, `_start_warmup_session`) 전체 제거 → `SessionScheduler`로 이관
+- `__init__` 시그니처에서 `general_llm` 파라미터 제거
+
+### 이관 배경
+- 세션 관리 책임을 `InfraScheduler`에서 `SessionScheduler`로 분리
+- 전용 LLM 역할 없이 순수 스케줄링 + subprocess 직접 호출로 간소화
+
+---
+
+## [2026-04-01] 모닝 스케줄 시각 변경 (Session Line 1 안으로 이동)
+
+### 수정
+- IT 뉴스 브리핑: 08:00 → **06:00** KST
+- 인프라 일일 리포트: 09:00 (하드코딩) → **06:15** KST (환경변수로 분리)
+- `src/core/config.py` — `INFRA_DAILY_REPORT_HOUR`, `INFRA_DAILY_REPORT_MINUTE` 추가
+- `src/scheduler/infra_scheduler.py` — `if now.hour == 9` 하드코딩 제거, config 값 참조로 변경
+- `.env` — `NEWS_HOUR=6`, `INFRA_DAILY_REPORT_HOUR=6`, `INFRA_DAILY_REPORT_MINUTE=15` 반영
+- `.env.example` — 동일하게 갱신
+
+### 변경 배경
+Session Line 1 (01:30~06:30) 내에서 모닝 스케줄이 완료되도록 배치.
+Session Line 2 시작(07:00) 전 IT 뉴스와 서버 리포트 수신 완료 목적.
+
+---
+
 ## 알려진 개선 필요 사항 (현재 하드코딩)
 
 | 항목 | 위치 | 내용 | 우선도 |

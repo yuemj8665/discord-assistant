@@ -148,6 +148,7 @@ class LLMService:
             "claude", "-p", message,
             "--output-format", "json",
             "--system-prompt", role_cfg["system_prompt"],
+            "--dangerously-skip-permissions",
         ]
         if self._session_id:
             cmd += ["--resume", self._session_id]
