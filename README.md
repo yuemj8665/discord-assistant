@@ -1,7 +1,7 @@
 # Discord 개인 비서 봇
 
 > **프로젝트 시작일**: 2026-03-20
-> **최종 업데이트**: 2026-03-25
+> **최종 업데이트**: 2026-04-01
 
 ## 5-1. 프로젝트 개요
 
@@ -13,10 +13,11 @@ GPU 없는 로컬 홈서버(macOS Mac Mini)에서 24시간 상시 구동.
 - 멀티 세션: 채널별 역할 분리 (general / calendar / infra / news)
 - Google Calendar 연동: 자연어로 일정 조회/등록/수정/삭제
 - 일정 자동 알림: 30분 전 Discord 채널에 `@멘션`으로 선제적 알림
-- 홈서버 모니터링: 리소스 경보 + 09:00 일일 리포트 (`!infra`로 즉시 조회)
-- IT 뉴스 브리핑: 매일 08:00 GeekNews/HackerNews/요즘IT 요약 + 트렌드 분석 (`!news`로 즉시 수신)
+- 홈서버 모니터링: 리소스 경보 + 06:15 일일 리포트 (`!infra`로 즉시 조회)
+- IT 뉴스 브리핑: 매일 06:00 GeekNews/HackerNews/요즘IT 요약 + 트렌드 분석 (`!news`로 즉시 수신)
 - 웹 검색: 실시간 정보 검색 후 응답 또는 캘린더 등록
 - 세션 유지: 재시작 후에도 대화 흐름 이어짐 (`!reset`으로 초기화)
+- Claude Code 세션 스케줄링: Session Line 1/2/3 자동 워밍업 및 시작·종료 알림
 
 ---
 
@@ -48,15 +49,17 @@ discord-assistant/
 │   │   └── calendar_service.py   # Google Calendar API 직접 조회 (스케줄러용)
 │   └── scheduler/
 │       ├── notification_scheduler.py  # 1분 주기 일정 감지 + 채널 @멘션 알림
-│       ├── infra_scheduler.py         # 5분 주기 리소스 경보 + 09:00 일일 리포트 (LLM 분석)
-│       └── news_scheduler.py          # 매일 08:00 IT 뉴스 수집 + LLM 요약 + 트렌드 분석
+│       ├── infra_scheduler.py         # 5분 주기 리소스 경보 + 06:15 일일 리포트 (LLM 분석)
+│       ├── news_scheduler.py          # 매일 06:00 IT 뉴스 수집 + LLM 요약 + 트렌드 분석
+│       └── session_scheduler.py       # Claude Code 세션 라인 시작·종료 알림 및 워밍업
 │
 ├── data/                         # 세션 데이터 (gitignore)
 │   └── sessions/
 │       ├── general/
 │       ├── calendar/
 │       ├── infra/
-│       └── news/
+│       ├── news/
+│       └── session/
 │
 ├── logs/                         # 로그 파일 (gitignore)
 │   └── bot.log                   # 3일치 자동 로테이션
@@ -193,6 +196,15 @@ python -m pytest tests/ -v
 | calendar 채널 | 일정 관리 + 30분 전 알림 수신 | Google Calendar MCP, WebSearch, WebFetch |
 | infra 채널 | 서버 모니터링 알림 수신 | MCP infra (psutil, docker) |
 | news 채널 | IT 뉴스 브리핑 + 대화 | WebFetch |
+| session 채널 | Claude Code 세션 시작·종료 알림 수신 | — |
+
+### Claude Code 세션 라인 스케줄
+
+| Session Line | 시작 | 만료 | 용도 |
+|-------------|------|------|------|
+| Session Line 1 | 01:30 | 06:30 | 모닝 스케줄 (뉴스 06:00, 리포트 06:15) 포함 |
+| Session Line 2 | 07:00 | 12:00 | 오전 업무 커버 |
+| Session Line 3 | 13:00 | 18:00 | 오후 업무 커버 |
 
 ### Discord 봇 커맨드
 
@@ -218,8 +230,9 @@ python -m pytest tests/ -v
 | 2026-03-23 | OrbStack 재부팅 후 미시작 → Docker 오프 | OrbStack "Launch at Login" 활성화 |
 | 2026-03-23 | CalendarService OAuth 토큰 자동 갱신 실패 | `credentials.json`에서 `client_id`, `client_secret` 주입 |
 | 2026-03-23 | LLM 요일 계산 오류 | 프롬프트에 요일 직접 명시 (`2026-03-23 (월요일) 14:51`) |
+| 2026-04-01 | 봇 이중 응답 | 수동 실행 프로세스와 launchd 프로세스 동시 실행 → 수동 프로세스 종료 |
 
-### 현재 상태 (2026-03-25)
+### 현재 상태 (2026-04-01)
 
 | 기능 | 상태 |
 |------|------|
@@ -230,8 +243,9 @@ python -m pytest tests/ -v
 | 세션 유지 (재시작 후 복원) | ✅ 정상 |
 | `!infra` 즉시 서버 분석 리포트 | ✅ 정상 |
 | 5분 주기 리소스 경보 | ✅ 정상 |
-| 09:00 KST 일일 서버 리포트 | ✅ 정상 |
+| 06:15 KST 일일 서버 리포트 | ✅ 정상 |
 | `!news` IT 뉴스 브리핑 | ✅ 정상 |
-| 08:00 KST 자동 뉴스 브리핑 | ✅ 정상 |
+| 06:00 KST 자동 뉴스 브리핑 | ✅ 정상 |
 | 뉴스 세션 대화 (내용 기억 기반 Q&A) | ✅ 정상 |
+| Session Line 1/2/3 자동 워밍업 및 시작·종료 알림 | ✅ 정상 |
 | 음성 대화 | ❌ 제거됨 (Discord DAVE E2EE 정책) |
