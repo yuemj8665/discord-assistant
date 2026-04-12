@@ -45,6 +45,12 @@ class Config:
     INFRA_DAILY_REPORT_HOUR: int = int(os.getenv("INFRA_DAILY_REPORT_HOUR", "6"))
     INFRA_DAILY_REPORT_MINUTE: int = int(os.getenv("INFRA_DAILY_REPORT_MINUTE", "15"))
 
+    # Google Calendar 카테고리 ID
+    CALENDAR_ID_DEFAULT: str = os.getenv("CALENDAR_ID_DEFAULT", "primary")
+    CALENDAR_ID_PERSONAL: str = os.getenv("CALENDAR_ID_PERSONAL", "primary")
+    CALENDAR_ID_WORK: str = os.getenv("CALENDAR_ID_WORK", "primary")
+    CALENDAR_ID_EXERCISE: str = os.getenv("CALENDAR_ID_EXERCISE", "primary")
+
     # MCP
     MCP_CONFIG_PATH: str = str(PROJECT_ROOT / "mcp_config.json")
     GOOGLE_OAUTH_CREDENTIALS: str = os.getenv(

@@ -2,6 +2,37 @@
 
 ---
 
+## [2026-04-12] Google Calendar 카테고리 분류 기능 추가
+
+### 추가
+- `.env` — `CALENDAR_ID_DEFAULT`, `CALENDAR_ID_PERSONAL`, `CALENDAR_ID_WORK`, `CALENDAR_ID_EXERCISE` 추가
+- `src/core/config.py` — 위 4개 캘린더 ID 설정값 추가
+
+### 변경
+- `src/services/llm_service.py` — calendar 역할 시스템 프롬프트에 카테고리별 calendarId 명시
+  - 일정 등록 시 내용에 따라 업무/운동/개인/기본 캘린더 자동 분류
+- 가족 캘린더 제거 (개인 캘린더로 통합) — `.env`, `config.py`, `llm_service.py` 모두 반영
+
+### 변경 배경
+기존에는 모든 일정이 primary 캘린더 하나에 등록되었으나, Google Calendar 카테고리 캘린더(업무/운동/개인)를 신규 생성하고 LLM이 내용 기반으로 자동 분류하도록 개선.
+
+---
+
+## [2026-04-08] 스케줄러 시각 조정 및 Google OAuth 토큰 갱신 로직 추가
+
+### 변경
+- `src/bot/events.py` — `InfraScheduler.start()` 비활성화 → 재활성화 (일일 리포트 시각 09:15로 변경 후 재개)
+- `.env` — `NEWS_HOUR=6` → `NEWS_HOUR=9` (뉴스 브리핑 09:00으로 변경)
+- `.env` — `INFRA_DAILY_REPORT_HOUR=6` → `INFRA_DAILY_REPORT_HOUR=9` (인프라 리포트 09:15로 변경)
+- `src/services/calendar_service.py` — `google.auth.transport.requests.Request`를 이용한 access_token 자동 갱신 로직 추가
+
+### 변경 배경
+- Session Line 1 기준 5시간 창 불일치 문제 조사 중 06:00 뉴스/06:15 인프라 스케줄이 Session Line 2 시작(07:00) 이후로 이동 필요 판단
+- Google OAuth `invalid_grant` 에러가 1분 간격으로 반복 발생 → `CalendarService`에 토큰 만료 시 자동 refresh 처리 추가
+- MCP `google-calendar-mcp` refresh_token revoke 확인 → 수동 재인증으로 해결
+
+---
+
 ## [2026-03-20] 초기 프로젝트 구조 구성
 
 ### 추가

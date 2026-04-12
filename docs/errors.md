@@ -2,6 +2,77 @@
 
 ---
 
+## [2026-04-10] InfraScheduler 09:15 LLM 분석 실패 → 폴백 리포트 전송
+
+### 증상
+Discord 인프라 채널에 모든 컨테이너 현황이 원시 데이터 형태로 전부 출력됨.
+
+### 원인
+`LLMService`의 `Claude CLI 오류: ` (stderr 빈 문자열) 발생으로 LLM 분석 실패.
+`infra_scheduler._send_daily_report()`의 폴백 로직이 동작하여 `format_container_report()`가 전체 컨테이너를 Discord에 직접 전송.
+
+### 흐름 정리
+- **정상**: LLM → MCP `get_docker_containers` 수집 → LLM 요약 → Discord
+- **폴백(오늘)**: LLM 실패 → `infra_service.get_containers()` 직접 호출 → raw 출력 → Discord
+
+### 원인 미특정
+stderr가 비어있어 Claude CLI 오류 원인 불명. Session Line 2 워밍업(07:00)은 정상이었으나 09:15 시점에 일시적 오류 발생 추정. 이후 재현 없음.
+
+### 교훈
+- Discord에 컨테이너 전체 목록이 나온 것은 버그가 아닌 폴백 정상 동작
+- `llm_service.py`에서 stderr 외 stdout도 로깅하면 원인 파악에 유리
+
+---
+
+## [2026-04-08] Google OAuth invalid_grant 반복 에러
+
+### 증상
+`NotificationScheduler`가 매분 캘린더 조회 시 `invalid_grant: Token has been expired or revoked` 에러 반복 발생.
+
+### 원인 1 — CalendarService 토큰 갱신 로직 부재
+`CalendarService._build_service()`가 MCP 토큰 파일에서 `access_token`을 읽어 직접 사용하는데, 만료 시 자동 refresh 로직이 없었음.
+
+### 대처 1
+`google.auth.transport.requests.Request`를 이용해 `creds.expired or not creds.valid` 조건 시 자동 갱신하도록 수정.
+```python
+if creds.expired or not creds.valid:
+    creds.refresh(Request())
+```
+
+### 원인 2 — MCP refresh_token 자체가 revoke됨
+`invalid_grant`는 access_token 만료가 아니라 refresh_token 자체가 Google 서버에서 revoke된 상태. 프로덕션 앱이어도 Google 보안 이벤트 등으로 revoke 가능.
+
+### 대처 2
+기존 토큰 삭제 후 재인증:
+```bash
+rm ~/.config/google-calendar-mcp/tokens.json
+GOOGLE_OAUTH_CREDENTIALS=/path/to/credentials.json /opt/homebrew/bin/google-calendar-mcp auth
+```
+
+### 교훈
+- `invalid_grant`는 access_token이 아닌 refresh_token 문제 → 코드 수정만으로는 해결 불가, 재인증 필요
+- `CalendarService`는 토큰 자동 갱신 로직을 반드시 포함해야 함
+
+---
+
+## [2026-04-03] Session Line 2 워밍업 60초 timeout
+
+### 증상
+`session_scheduler`가 07:00에 `claude -p ping` subprocess 실행 시 60초 후 timeout 에러.
+Discord에 `❌ Session Line 2 워밍업 실패` 알림 발생.
+
+### 원인
+Claude Code 로그인 토큰 만료. subprocess는 `capture_output=True`로 실행되어 인증 프롬프트를 출력하지 못하고 60초간 대기 후 timeout.
+
+### 대처
+Claude Code 세션 재로그인(`/login`). 기능 자체는 `LLMService.ask()`에서 새 세션 자동 생성으로 복구됨.
+
+### 교훈
+- 워밍업 실패해도 봇 기능은 정상 동작 (LLMService가 세션 재생성)
+- Claude Code 토큰은 주기적으로 만료될 수 있음 → 필요 시 수동 재로그인
+
+---
+
 ## [2026-03-20] pytest async 테스트 실패
 
 ### 증상

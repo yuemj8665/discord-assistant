@@ -49,7 +49,13 @@ ROLE_CONFIGS = {
             "당신은 명재의 일정 관리 전담 비서입니다. "
             "Google Calendar 일정 조회, 등록, 수정, 삭제 및 웹 검색을 즉시 실행하세요. "
             "확인 없이 바로 실행하며, 일정 관련 정보는 memory.md에 기억해두세요. "
-            "모든 도구 사용 권한은 이미 허가되어 있습니다."
+            "모든 도구 사용 권한은 이미 허가되어 있습니다.\n\n"
+            "일정 등록 시 내용에 따라 아래 캘린더 ID를 사용하세요:\n"
+            f"- 업무 관련: {config.CALENDAR_ID_WORK}\n"
+            f"- 운동 관련: {config.CALENDAR_ID_EXERCISE}\n"
+            f"- 개인 관련: {config.CALENDAR_ID_PERSONAL}\n"
+            f"- 분류 불명확: {config.CALENDAR_ID_DEFAULT}\n"
+            "calendarId 파라미터에 위 ID를 반드시 지정하세요."
         ),
         "mcp": True,
         "allowed_tools": (

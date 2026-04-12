@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from src.core.config import config
 from googleapiclient.discovery import build
 
@@ -31,6 +32,9 @@ class CalendarService:
             client_secret=client_info["client_secret"],
             scopes=SCOPES,
         )
+        if creds.expired or not creds.valid:
+            creds.refresh(Request())
+            logger.info("[캘린더] access_token 갱신 완료")
         return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
     def get_upcoming_events(self, minutes: int = 30) -> list[dict]:
