@@ -38,18 +38,26 @@ class CalendarService:
         return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
     def get_upcoming_events(self, minutes: int = 30) -> list[dict]:
-        """지금부터 minutes분 이내의 일정을 반환한다."""
+        """지금부터 minutes분 이내의 일정을 반환한다. (primary, 업무, 개인 캘린더 조회)"""
         now = datetime.now(timezone.utc)
         time_max = now + timedelta(minutes=minutes)
 
-        result = self._service.events().list(
-            calendarId="primary",
-            timeMin=now.isoformat(),
-            timeMax=time_max.isoformat(),
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
+        calendar_ids = [
+            config.CALENDAR_ID_DEFAULT,
+            config.CALENDAR_ID_WORK,
+            config.CALENDAR_ID_PERSONAL,
+        ]
 
-        events = result.get("items", [])
+        events = []
+        for calendar_id in calendar_ids:
+            result = self._service.events().list(
+                calendarId=calendar_id,
+                timeMin=now.isoformat(),
+                timeMax=time_max.isoformat(),
+                singleEvents=True,
+                orderBy="startTime",
+            ).execute()
+            events.extend(result.get("items", []))
+
         logger.debug("[캘린더] %d분 이내 일정 %d건 조회", minutes, len(events))
         return events
