@@ -2,10 +2,14 @@ import os
 import subprocess
 import json
 import logging
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
 from src.core.config import config
+
+KST = timezone(timedelta(hours=9))
+_WEEKDAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +20,9 @@ ROLE_CONFIGS = {
         "system_prompt": (
             "당신은 명재의 개인 비서입니다. "
             "웹 검색 등 도구 사용 시 사전에 확인을 구하지 말고 즉시 실행하세요. "
-            "모든 도구 사용 권한은 이미 허가되어 있습니다."
+            "모든 도구 사용 권한은 이미 허가되어 있습니다.\n\n"
+            "세션 시작 시 반드시 data/sessions/general/memory.md를 읽어 명재에 대한 맥락을 파악하세요. "
+            "오늘 날짜의 data/sessions/general/daily/YYYY-MM-DD.md 파일이 있으면 함께 읽어 이전 대화 흐름을 이어가세요."
         ),
         "mcp": False,
         "allowed_tools": "WebSearch,WebFetch",
@@ -128,6 +134,29 @@ class LLMService:
 
         logger.info("[LLM:%s] 응답: %s", self._role, response_text[:200])
         return response_text
+
+    def log_conversation(self, user_msg: str, assistant_msg: str) -> None:
+        now = datetime.now(KST)
+        daily_dir = SESSIONS_DIR / self._role / "daily"
+        daily_dir.mkdir(parents=True, exist_ok=True)
+        daily_file = daily_dir / f"{now.strftime('%Y-%m-%d')}.md"
+
+        if not daily_file.exists():
+            daily_file.write_text(
+                f"## {now.strftime('%Y-%m-%d')} ({_WEEKDAYS[now.weekday()]})\n\n",
+                encoding="utf-8",
+            )
+
+        entry = (
+            f"### [{now.strftime('%H:%M')}] 명재\n{user_msg}\n\n"
+            f"### [{now.strftime('%H:%M')}] Claude\n{assistant_msg}\n\n"
+        )
+        with daily_file.open("a", encoding="utf-8") as f:
+            f.write(entry)
+
+    @property
+    def daily_dir(self) -> Path:
+        return SESSIONS_DIR / self._role / "daily"
 
     def reset_session(self) -> None:
         self._session_id = None

@@ -45,6 +45,8 @@ class TextHandler:
                 await message.channel.send(f"오류가 발생했습니다: {e}")
                 return
 
+        await loop.run_in_executor(None, llm.log_conversation, user_input, response)
+
         if len(response) <= 2000:
             await message.channel.send(response)
         else:

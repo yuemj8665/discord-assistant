@@ -2,6 +2,39 @@
 
 ---
 
+## [2026-05-05] 대화 메모리 누적 시스템 추가
+
+### 추가
+- `src/services/llm_service.py` — `log_conversation()` 메서드 추가: 대화마다 `data/sessions/{role}/daily/YYYY-MM-DD.md`에 원문 로그 누적
+- `src/services/llm_service.py` — `daily_dir` 프로퍼티 추가
+- `src/scheduler/session_scheduler.py` — 세션 종료 15분 전 요약 트리거 추가 (`_on_summary()`)
+  - Line 1: 06:15, Line 2: 11:45, Line 3: 17:45
+  - LLM이 daily 파일 읽고 상세 요약 업데이트 + memory.md에 명재 정보 추가
+
+### 변경
+- `src/services/llm_service.py` — general 역할 시스템 프롬프트에 세션 시작 시 memory.md + 오늘 daily 파일 읽기 지시 추가
+- `src/handlers/text_handler.py` — 대화 후 `log_conversation()` 호출 추가
+- `src/bot/events.py` — `SessionScheduler`에 `session_manager` 주입
+- `src/scheduler/session_scheduler.py` — `session_manager` 파라미터 추가, `_notified`에 summary 키 추가
+
+### 데이터 구조
+```
+data/sessions/{role}/
+├── memory.md       ← 핵심 요약 (항상 읽음)
+├── daily/
+│   └── YYYY-MM-DD.md  ← 날짜별 원문 + 상세 요약
+└── session.json
+```
+
+---
+
+## [2026-04-14] 알림 스케줄러 다중 캘린더 조회 추가
+
+### 변경
+- `src/services/calendar_service.py` — `get_upcoming_events()`가 primary 외 업무, 개인 캘린더도 함께 조회
+
+---
+
 ## [2026-04-12] Google Calendar 카테고리 분류 기능 추가
 
 ### 추가

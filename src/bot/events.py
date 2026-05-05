@@ -26,7 +26,7 @@ def register_events(
     scheduler = NotificationScheduler(bot, general_llm)
     infra_scheduler = InfraScheduler(bot, infra_llm)
     news_scheduler = NewsScheduler(bot, news_llm)
-    session_scheduler = SessionScheduler(bot)
+    session_scheduler = SessionScheduler(bot, session_manager)
 
     @bot.event
     async def on_ready() -> None:
