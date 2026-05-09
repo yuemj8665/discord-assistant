@@ -1,7 +1,7 @@
 # Discord 개인 비서 봇
 
 > **프로젝트 시작일**: 2026-03-20
-> **최종 업데이트**: 2026-04-01
+> **최종 업데이트**: 2026-05-10
 
 ## 5-1. 프로젝트 개요
 
@@ -18,6 +18,7 @@ GPU 없는 로컬 홈서버(macOS Mac Mini)에서 24시간 상시 구동.
 - 웹 검색: 실시간 정보 검색 후 응답 또는 캘린더 등록
 - 세션 유지: 재시작 후에도 대화 흐름 이어짐 (`!reset`으로 초기화)
 - Claude Code 세션 스케줄링: Session Line 1/2/3 자동 워밍업 및 시작·종료 알림
+- Git 변경사항 메일 전송: `!mail <repo경로>`로 변경 diff + LLM 요약을 메일로 발송
 
 ---
 
@@ -46,20 +47,27 @@ discord-assistant/
 │   │   ├── llm_service.py        # Claude CLI subprocess (ROLE_CONFIGS + 세션 관리)
 │   │   ├── session_manager.py    # 채널 ID별 LLMService 라우팅
 │   │   ├── infra_service.py      # psutil 리소스 + docker ps 래퍼
-│   │   └── calendar_service.py   # Google Calendar API 직접 조회 (스케줄러용)
+│   │   ├── calendar_service.py   # Google Calendar API 직접 조회 (스케줄러용)
+│   │   ├── git_service.py        # git diff/파일 추출 + 스냅샷 저장 (!mail용)
+│   │   └── mail_service.py       # Gmail API 송신 래퍼 (!mail용)
 │   └── scheduler/
 │       ├── notification_scheduler.py  # 1분 주기 일정 감지 + 채널 @멘션 알림
 │       ├── infra_scheduler.py         # 5분 주기 리소스 경보 + 06:15 일일 리포트 (LLM 분석)
 │       ├── news_scheduler.py          # 매일 06:00 IT 뉴스 수집 + LLM 요약 + 트렌드 분석
 │       └── session_scheduler.py       # Claude Code 세션 라인 시작·종료 알림 및 워밍업
 │
+├── scripts/
+│   └── gmail_auth.py             # Gmail OAuth 초기 인증 스크립트 (최초 1회 실행)
+│
 ├── data/                         # 세션 데이터 (gitignore)
-│   └── sessions/
-│       ├── general/
-│       ├── calendar/
-│       ├── infra/
-│       ├── news/
-│       └── session/
+│   ├── sessions/
+│   │   ├── general/
+│   │   ├── calendar/
+│   │   ├── infra/
+│   │   ├── news/
+│   │   └── session/
+│   ├── mail_snapshots/           # !mail 마지막 전송 커밋 저장
+│   └── gmail_token.json          # Gmail OAuth 토큰 (gitignore)
 │
 ├── logs/                         # 로그 파일 (gitignore)
 │   └── bot.log                   # 3일치 자동 로테이션
@@ -143,6 +151,9 @@ discord-assistant/
 - Claude CLI 설치 및 로그인 완료
 - Node.js (google-calendar-mcp용): `npm install -g @cocal/google-calendar-mcp`
 - Google OAuth 자격증명: `credentials.json` 발급 후 프로젝트 루트에 배치
+  - Google Cloud Console에서 Calendar API + Gmail API 모두 활성화 필요
+  - OAuth 클라이언트 유형: **데스크톱 앱**
+  - OAuth 동의 화면 → 테스트 사용자에 본인 Gmail 등록 필요
 
 ### 로컬 venv로 실행
 
@@ -161,7 +172,10 @@ cp .env.example .env
 # 4. Google Calendar OAuth 인증 (최초 1회)
 GOOGLE_OAUTH_CREDENTIALS=/path/to/credentials.json google-calendar-mcp auth
 
-# 5. 실행 (mcp_config.json 자동 생성됨)
+# 5. Gmail OAuth 인증 (최초 1회, !mail 커맨드 사용 시 필요)
+venv/bin/python3 scripts/gmail_auth.py
+
+# 6. 실행 (mcp_config.json 자동 생성됨)
 python main.py
 ```
 
@@ -197,6 +211,7 @@ python -m pytest tests/ -v
 | infra 채널 | 서버 모니터링 알림 수신 | MCP infra (psutil, docker) |
 | news 채널 | IT 뉴스 브리핑 + 대화 | WebFetch |
 | session 채널 | Claude Code 세션 시작·종료 알림 수신 | — |
+| mail 채널 | Git 변경사항 메일 전송 | — |
 
 ### Claude Code 세션 라인 스케줄
 
@@ -214,6 +229,7 @@ python -m pytest tests/ -v
 | `!infra` | infra | 홈서버 리소스 현황 즉시 분석 |
 | `!news` | news | IT 뉴스 브리핑 즉시 수신 |
 | `!reset` | 모든 채널 | 해당 채널 대화 세션 초기화 |
+| `!mail <repo경로> [파일경로]` | mail | Git 변경사항 LLM 요약 후 메일 전송 |
 
 ---
 
@@ -231,6 +247,9 @@ python -m pytest tests/ -v
 | 2026-03-23 | CalendarService OAuth 토큰 자동 갱신 실패 | `credentials.json`에서 `client_id`, `client_secret` 주입 |
 | 2026-03-23 | LLM 요일 계산 오류 | 프롬프트에 요일 직접 명시 (`2026-03-23 (월요일) 14:51`) |
 | 2026-04-01 | 봇 이중 응답 | 수동 실행 프로세스와 launchd 프로세스 동시 실행 → 수동 프로세스 종료 |
+| 2026-05-10 | `UnboundLocalError: _config` | events.py 내 mail_service 생성 순서 오류 → import 이후로 이동 |
+| 2026-05-10 | Gmail API 403 미활성화 | Google Cloud Console에서 Gmail API 사용 설정 |
+| 2026-05-10 | Gmail OAuth access_denied | OAuth 동의 화면 테스트 사용자 등록 |
 
 ### 현재 상태 (2026-04-01)
 
@@ -248,4 +267,5 @@ python -m pytest tests/ -v
 | 06:00 KST 자동 뉴스 브리핑 | ✅ 정상 |
 | 뉴스 세션 대화 (내용 기억 기반 Q&A) | ✅ 정상 |
 | Session Line 1/2/3 자동 워밍업 및 시작·종료 알림 | ✅ 정상 |
+| `!mail` Git 변경사항 메일 전송 | ✅ 정상 |
 | 음성 대화 | ❌ 제거됨 (Discord DAVE E2EE 정책) |

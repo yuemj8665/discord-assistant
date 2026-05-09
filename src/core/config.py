@@ -45,6 +45,10 @@ class Config:
     INFRA_DAILY_REPORT_HOUR: int = int(os.getenv("INFRA_DAILY_REPORT_HOUR", "6"))
     INFRA_DAILY_REPORT_MINUTE: int = int(os.getenv("INFRA_DAILY_REPORT_MINUTE", "15"))
 
+    # 메일 발송
+    MAIL_CHANNEL_ID: int = int(os.getenv("MAIL_CHANNEL_ID", "0"))
+    MAIL_RECIPIENT: str = os.getenv("MAIL_RECIPIENT", "")
+
     # Google Calendar 카테고리 ID
     CALENDAR_ID_DEFAULT: str = os.getenv("CALENDAR_ID_DEFAULT", "primary")
     CALENDAR_ID_PERSONAL: str = os.getenv("CALENDAR_ID_PERSONAL", "primary")

@@ -2,6 +2,45 @@
 
 ---
 
+## [2026-05-09] !mail 커맨드 추가 — Git 변경사항 메일 전송
+
+### 추가
+- `src/services/git_service.py` — git diff/파일 내용 추출, 스냅샷 저장/로드
+  - `get_diff()`, `get_changed_files()`, `get_file_content()`, `get_head_commit()`
+  - 마지막 전송 커밋을 `data/mail_snapshots/{repo_name}.json`에 저장
+- `src/services/mail_service.py` — Gmail API 송신 래퍼
+  - `data/gmail_token.json` 기반 OAuth, 만료 시 자동 갱신
+- `scripts/gmail_auth.py` — Gmail OAuth 초기 인증 스크립트 (최초 1회 실행)
+- `src/core/config.py` — `MAIL_RECIPIENT` 설정 추가
+- `.env` / `.env.example` — `MAIL_RECIPIENT` 추가
+
+### 수정
+- `src/bot/events.py` — `!mail` 커맨드 추가
+  - 사용법: `!mail <repo경로> [파일경로]`
+  - 마지막 전송 이후 변경 사항만 포함 (첫 전송 시 초기 커밋 기준)
+  - LLM이 diff를 분석해 변경 요약 + 추가 내용 설명 생성
+  - 이메일 본문: LLM 요약 + diff 원문 + 변경 파일 전체 내용
+
+### 동작 흐름
+```
+!mail /path/to/repo [파일]
+    → data/mail_snapshots/{repo}.json 에서 마지막 전송 커밋 로드
+    → git diff {last}..HEAD 실행
+    → LLM: 변경 요약 + 추가 내용 설명 생성
+    → Gmail API로 메일 전송
+    → 현재 HEAD 커밋을 스냅샷으로 저장
+```
+
+### 최초 설정 방법
+1. Google Cloud Console에서 Gmail API 활성화
+2. `venv/bin/python3 scripts/gmail_auth.py` 실행 → 브라우저 인증
+3. `.env`에 `MAIL_RECIPIENT` 설정
+4. 봇 재시작 후 `!mail /path/to/repo` 사용
+
+---
+
+---
+
 ## [2026-05-05] 대화 메모리 누적 시스템 추가
 
 ### 추가

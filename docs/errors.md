@@ -2,6 +2,65 @@
 
 ---
 
+## [2026-05-10] events.py UnboundLocalError: _config 순서 오류
+
+### 증상
+```
+UnboundLocalError: cannot access local variable '_config' where it is not associated with a value
+```
+봇 재시작 시 즉시 크래시. launchd가 반복 재시작 시도.
+
+### 원인
+`register_events()` 함수 내에서 `_config`가 정의(`from src.core.config import config as _config`)되기 **전에** `mail_service = MailService(_config.GOOGLE_OAUTH_CREDENTIALS)` 라인이 위치함.
+Python은 함수 내 지역 변수 참조 시 정의 순서를 엄격히 따름.
+
+### 대처
+`mail_service` 생성 코드를 `from src.core.config import config as _config` 임포트 **이후**로 이동.
+
+### 교훈
+- 함수 내 임포트(`from ... import ...`)는 해당 라인이 실행되기 전까지는 변수가 존재하지 않음.
+- 함수 내 지역 임포트를 사용할 경우 의존 코드는 반드시 임포트 이후에 위치해야 함.
+
+---
+
+## [2026-05-10] Gmail API 403 — API 미활성화
+
+### 증상
+```
+HttpError 403: Gmail API has not been used in project 652145495786 before or it is disabled.
+```
+
+### 원인
+Google Cloud 프로젝트에서 Gmail API가 활성화되지 않은 상태에서 API 호출.
+
+### 대처
+Google Cloud Console → API 및 서비스 → 라이브러리 → Gmail API → 사용 설정.
+활성화 후 전파까지 1~2분 소요.
+
+---
+
+## [2026-05-10] Gmail OAuth 403 access_denied — 테스트 사용자 미등록
+
+### 증상
+```
+403 오류: access_denied
+Discord Bot Mail은(는) Google 인증 절차를 완료하지 않았습니다.
+```
+
+### 원인
+OAuth 앱이 테스트 모드일 때, 본인 계정이더라도 테스트 사용자 목록에 명시적으로 등록되지 않으면 인증 거부됨.
+
+### 대처
+Google Cloud Console → API 및 서비스 → OAuth 동의 화면 → 테스트 사용자 → 본인 Gmail 추가.
+
+### 교훈
+- OAuth 테스트 모드는 소유자 계정도 예외 없이 테스트 사용자 등록이 필요함.
+- 개인 프로젝트용 OAuth 앱은 테스트 모드 그대로 사용해도 무방 (게시 불필요).
+
+---
+
+---
+
 ## [2026-04-10] InfraScheduler 09:15 LLM 분석 실패 → 폴백 리포트 전송
 
 ### 증상
