@@ -48,6 +48,10 @@ class Config:
     # 메일 발송
     MAIL_CHANNEL_ID: int = int(os.getenv("MAIL_CHANNEL_ID", "0"))
     MAIL_RECIPIENT: str = os.getenv("MAIL_RECIPIENT", "")
+    GMAIL_OAUTH_CREDENTIALS: str = os.getenv(
+        "GMAIL_OAUTH_CREDENTIALS",
+        str(PROJECT_ROOT / "gmail_credentials.json")
+    )
 
     # Google Calendar 카테고리 ID
     CALENDAR_ID_DEFAULT: str = os.getenv("CALENDAR_ID_DEFAULT", "primary")

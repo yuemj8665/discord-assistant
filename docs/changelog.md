@@ -33,9 +33,26 @@
 
 ### 최초 설정 방법
 1. Google Cloud Console에서 Gmail API 활성화
-2. `venv/bin/python3 scripts/gmail_auth.py` 실행 → 브라우저 인증
-3. `.env`에 `MAIL_RECIPIENT` 설정
-4. 봇 재시작 후 `!mail /path/to/repo` 사용
+2. Gmail OAuth 클라이언트 JSON 다운로드 → `gmail_credentials.json`으로 저장
+3. `venv/bin/python3 scripts/gmail_auth.py` 실행 → 브라우저 인증
+4. `.env`에 `MAIL_RECIPIENT`, `GMAIL_OAUTH_CREDENTIALS` 설정
+5. 봇 재시작 후 `!mail /path/to/repo` 사용
+
+---
+
+## [2026-05-10] Gmail credentials 분리 — Calendar API 인증 오류 수정
+
+### 배경
+Gmail API 연동을 위해 새 OAuth credentials를 기존 `credentials.json`에 덮어쓰면서
+Calendar MCP 토큰이 무효화되어 `unauthorized_client` 오류가 1분마다 반복 발생.
+
+### 변경
+- `gmail_credentials.json` 신규 추가 — Gmail API 전용 OAuth 클라이언트
+- `credentials.json` 복원 — Calendar API 전용 (기존 OAuth 클라이언트)
+- `src/core/config.py` — `GMAIL_OAUTH_CREDENTIALS` 설정 추가
+- `src/bot/events.py` — `MailService` 초기화 시 `GMAIL_OAUTH_CREDENTIALS` 사용
+- `.env` / `.env.example` — `GMAIL_OAUTH_CREDENTIALS` 항목 추가
+- Calendar MCP 재인증 (`~/.config/google-calendar-mcp/tokens.json` 재발급)
 
 ---
 

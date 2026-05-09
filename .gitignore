@@ -3,6 +3,7 @@
 
 # Google OAuth 인증 정보 (절대 커밋 금지)
 credentials.json
+gmail_credentials.json
 token.json
 
 # 자동 생성 파일 (봇 시작 시 .env 기반으로 생성됨)

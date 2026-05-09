@@ -64,7 +64,7 @@ def register_events(
             await text_handler.handle(message)
 
     from src.core.config import config as _config
-    mail_service = MailService(_config.GOOGLE_OAUTH_CREDENTIALS)
+    mail_service = MailService(_config.GMAIL_OAUTH_CREDENTIALS)
 
     @bot.command(name="reset"
 , help="현재 채널의 Claude 대화 세션을 초기화합니다.")

@@ -59,6 +59,55 @@ Google Cloud Console → API 및 서비스 → OAuth 동의 화면 → 테스트
 
 ---
 
+## [2026-05-10] credentials.json 교체로 Calendar API unauthorized_client 반복 오류
+
+### 증상
+```
+('unauthorized_client: Unauthorized', {'error': 'unauthorized_client', 'error_description': 'Unauthorized'})
+```
+`notification_scheduler`가 1분마다 Calendar API 호출 시 반복 발생.
+
+### 원인
+Gmail API용 새 OAuth 클라이언트(`credentials_2.json`)를 기존 Calendar용 `credentials.json`에 덮어씀.
+`CalendarService._build_service()`가 `credentials.json`의 `client_id`/`client_secret`으로 토큰 갱신을 시도하는데,
+Calendar MCP 토큰(`~/.config/google-calendar-mcp/tokens.json`)은 이전 `client_id` 기준으로 발급된 것이라 불일치 발생.
+
+### 대처
+1. Gmail용 credentials를 별도 파일(`gmail_credentials.json`)로 분리
+2. Calendar용 원래 `credentials.json` 복원 (Google Cloud Console → 기존 OAuth 클라이언트 JSON 재다운로드)
+3. `config.py`에 `GMAIL_OAUTH_CREDENTIALS` 설정 추가
+4. `mail_service.py`가 `GMAIL_OAUTH_CREDENTIALS`를 바라보도록 수정
+5. Calendar MCP 토큰 삭제 후 재인증:
+```bash
+rm ~/.config/google-calendar-mcp/tokens.json
+GOOGLE_OAUTH_CREDENTIALS=/path/to/credentials.json /opt/homebrew/bin/google-calendar-mcp auth
+```
+
+### 교훈
+- Calendar API용과 Gmail API용 OAuth credentials는 **반드시 별도 파일로 분리** 관리
+- credentials.json을 교체하면 해당 파일을 참조하는 **모든 서비스의 토큰을 재발급**해야 함
+
+---
+
+## [2026-05-10] Calendar API accessNotConfigured (새 프로젝트)
+
+### 증상
+```
+HttpError 403: Google Calendar API has not been used in project 547422643875 before or it is disabled.
+```
+Calendar MCP 재인증 후에도 API 호출 실패.
+
+### 원인
+새로 다운로드한 `calender_credencial.json`이 Calendar API가 활성화되지 않은 Google Cloud 프로젝트(547422643875)에서 발급됨.
+
+### 대처
+Google Cloud Console → API 및 서비스 → 라이브러리 → Google Calendar API → **사용** 설정.
+활성화 전파까지 1~2분 소요.
+
+### 교훈
+- OAuth credentials를 새로 만들 때는 해당 프로젝트에 필요한 API가 활성화되어 있는지 반드시 확인
+- Gmail API와 Calendar API 모두 명시적으로 활성화해야 함 (기본 비활성 상태)
+
 ---
 
 ## [2026-04-10] InfraScheduler 09:15 LLM 분석 실패 → 폴백 리포트 전송
