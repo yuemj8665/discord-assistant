@@ -26,6 +26,16 @@
 
 ---
 
+## [2026-05-10] work 역할 system_prompt — 프로젝트 디렉토리 경로 명시
+
+### 수정
+- `src/services/llm_service.py` — work 역할 system_prompt에 `WORK_PROJECT_DIR` 경로 직접 명시
+  - 기존: "현재 담당 프로젝트 디렉토리에 직접 접근하여..."
+  - 변경: "담당 프로젝트 디렉토리는 {경로} 입니다. 이 디렉토리에 직접 접근하여..."
+- 경로 미명시 시 Claude가 discord-assistant 디렉토리를 메인으로 오인하는 문제 해결
+
+---
+
 ## [2026-05-10] mail_service.py — expiry datetime 버그 수정
 
 ### 수정
