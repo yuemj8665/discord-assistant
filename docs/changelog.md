@@ -26,6 +26,15 @@
 
 ---
 
+## [2026-05-10] mail_service.py — expiry datetime 버그 수정
+
+### 수정
+- `src/services/mail_service.py` — `expiry` 로드 시 `.replace(tzinfo=timezone.utc)` 제거
+  - google-auth 내부는 naive datetime(UTC, tzinfo 없음)으로 비교하므로 aware datetime 전달 시 TypeError
+- `from datetime import timezone` import 제거
+
+---
+
 ## [2026-05-10] work 채널 — 프로젝트 claude.md 자동 반영
 
 ### 변경

@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -39,6 +40,9 @@ class MailService:
         cred_data = json.loads(Path(self._credentials_path).read_text())
         client_info = cred_data.get("installed") or cred_data.get("web", {})
 
+        expiry_str = token_data.get("expiry")
+        expiry = datetime.fromisoformat(expiry_str) if expiry_str else None
+
         creds = Credentials(
             token=token_data.get("access_token"),
             refresh_token=token_data.get("refresh_token"),
@@ -46,12 +50,14 @@ class MailService:
             client_id=client_info["client_id"],
             client_secret=client_info["client_secret"],
             scopes=GMAIL_SCOPES,
+            expiry=expiry,
         )
         if not creds.valid:
             creds.refresh(Request())
             GMAIL_TOKEN_PATH.write_text(json.dumps({
                 "access_token": creds.token,
                 "refresh_token": creds.refresh_token,
+                "expiry": creds.expiry.isoformat() if creds.expiry else None,
             }))
             logger.info("[메일] access_token 갱신 완료")
 

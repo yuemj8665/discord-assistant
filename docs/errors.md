@@ -2,6 +2,47 @@
 
 ---
 
+## [2026-05-10] !mail datetime 비교 오류 — offset-naive vs offset-aware
+
+### 증상
+```
+메일 전송 실패: can't compare offset-naive and offset-aware datetimes
+```
+
+### 원인
+`mail_service.py`에서 `expiry` 로드 시 `.replace(tzinfo=timezone.utc)`로 timezone-aware datetime을 만들었으나,
+`google-auth` 라이브러리 내부(`creds.expired`)는 naive datetime(UTC, tzinfo 없음)으로 비교함 → 타입 불일치.
+
+### 해결
+- `expiry = datetime.fromisoformat(expiry_str)` — `.replace(tzinfo=timezone.utc)` 제거
+- `from datetime import timezone` import 제거
+
+---
+
+## [2026-05-10] !mail unauthorized_client — gmail_auth.py 잘못된 credentials 참조
+
+### 증상
+```
+메일 전송 실패: ('unauthorized_client: Unauthorized', {'error': 'unauthorized_client', 'error_description': 'Unauthorized'})
+```
+
+### 원인
+`scripts/gmail_auth.py`의 `CREDENTIALS_PATH`가 `credentials.json`(Calendar 전용)으로 잘못 설정되어 있었음.
+Gmail 토큰을 Calendar 클라이언트로 발급받고, 갱신 시 `mail_service.py`는 `gmail_credentials.json`(Gmail 클라이언트)으로 시도 → client_id 불일치 → `unauthorized_client`.
+
+재인증해도 같은 잘못된 파일을 참조하므로 무한 반복 발생.
+
+### 해결
+- `scripts/gmail_auth.py` — `CREDENTIALS_PATH = "credentials.json"` → `"gmail_credentials.json"` 수정
+- `scripts/gmail_auth.py` — 토큰 저장 시 `expiry` 누락 버그 수정
+- `src/services/mail_service.py` — 토큰 로드 시 `expiry` 복원 및 저장 시 `expiry` 포함 수정
+- 재인증 1회 실행으로 완전 해결 (`venv/bin/python3 scripts/gmail_auth.py`)
+
+### 핵심 교훈
+Gmail과 Calendar의 OAuth client_id가 다르므로(`547422643875-h942...` vs `547422643875-2hfc...`) 두 인증은 완전히 독립적. 각 서비스는 반드시 자신의 credentials 파일로 인증해야 한다.
+
+---
+
 ## [2026-05-10] events.py UnboundLocalError: _config 순서 오류
 
 ### 증상
