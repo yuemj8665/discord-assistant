@@ -2,6 +2,43 @@
 
 ---
 
+## [2026-05-10] work 채널 추가 — 업무 프로젝트 전담 세션
+
+### 추가
+- `src/core/config.py` — `WORK_CHANNEL_ID`, `WORK_PROJECT_DIR` 설정 추가
+- `src/services/llm_service.py` — `ROLE_CONFIGS["work"]` 추가
+  - system_prompt: 파일 접근·코드 작성·분석 전담 비서
+  - `extra_dirs` 필드: 역할별 추가 디렉토리 지정 지원
+  - allowed_tools: WebSearch, WebFetch
+- `src/services/llm_service.py` — `_build_command()`에 `extra_dirs` 처리 추가
+- `src/services/session_manager.py` — `WORK_CHANNEL_ID` 채널 등록
+- `.env` — `WORK_CHANNEL_ID=<WORK_CHANNEL_ID>`, `WORK_PROJECT_DIR=...` 추가
+- `.env.example` — 업무 프로젝트 섹션 추가
+
+### 채널 통합
+- `WORK_CHANNEL_ID`와 `MAIL_CHANNEL_ID`를 동일 채널(<WORK_CHANNEL_ID>)로 운영
+  - 일반 메시지 → work 세션 LLM 응답
+  - `!mail` 커맨드 → 기존대로 동작 (채널 ID 동일)
+
+### 담당 프로젝트
+- 경로: `<WORK_PROJECT_DIR>`
+- Claude가 해당 디렉토리에 직접 접근하여 코드 작성·분석·디버깅 수행
+
+---
+
+## [2026-05-10] work 채널 — 프로젝트 claude.md 자동 반영
+
+### 변경
+- `src/services/llm_service.py` — work 역할 system_prompt에 아래 지시 추가:
+  > 세션 시작 시 `{WORK_PROJECT_DIR}/claude.md` 파일이 존재하면 반드시 읽어 해당 파일에 정의된 정책과 규칙을 최우선으로 따르세요.
+
+### 동작
+- `20260424_HNix_Trap/claude.md`가 없으면 무시하고 기본 동작
+- 파일이 생성되면 다음 세션부터 즉시 반영 (재시작 불필요)
+- 프로젝트별 작업 규칙·컨벤션·페르소나를 claude.md에 정의하면 Claude가 자동 준수
+
+---
+
 ## [2026-05-09] !mail 커맨드 추가 — Git 변경사항 메일 전송
 
 ### 추가

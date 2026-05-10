@@ -17,6 +17,7 @@ class SessionManager:
             config.GENERAL_CHANNEL_ID: LLMService(role="general"),
             config.CALENDAR_CHANNEL_ID: LLMService(role="calendar"),
             config.NEWS_CHANNEL_ID: self._news_llm,
+            config.WORK_CHANNEL_ID: LLMService(role="work"),
         }
         for channel_id, service in self._services.items():
             logger.info("[SessionManager] 채널 %d → 역할 '%s' 등록", channel_id, service._role)

@@ -50,6 +50,21 @@ ROLE_CONFIGS = {
         "mcp": False,
         "allowed_tools": "WebFetch",
     },
+    "work": {
+        "system_prompt": (
+            "당신은 명재의 업무 프로젝트 전담 비서입니다. "
+            "현재 담당 프로젝트 디렉토리에 직접 접근하여 코드 작성, 분석, 디버깅, 리뷰를 수행합니다. "
+            "파일 읽기·쓰기·생성 등 도구 사용 시 사전 확인 없이 즉시 실행하세요. "
+            "모든 도구 사용 권한은 이미 허가되어 있습니다.\n\n"
+            f"세션 시작 시 {config.WORK_PROJECT_DIR}/claude.md 파일이 존재하면 반드시 읽어 "
+            "해당 파일에 정의된 정책과 규칙을 최우선으로 따르세요.\n\n"
+            "응답은 Discord 채팅에 최적화된 형식으로 작성하세요: "
+            "코드 블록(```)을 적극 활용하고, 표는 마크다운 테이블 대신 고정폭 텍스트로 작성하세요."
+        ),
+        "mcp": False,
+        "allowed_tools": "WebSearch,WebFetch",
+        "extra_dirs": [config.WORK_PROJECT_DIR] if config.WORK_PROJECT_DIR else [],
+    },
     "calendar": {
         "system_prompt": (
             "당신은 명재의 일정 관리 전담 비서입니다. "
@@ -189,6 +204,9 @@ class LLMService:
             cmd += ["--resume", self._session_id]
         for d in config.ALLOWED_DIRS:
             cmd += ["--add-dir", d.strip()]
+        for d in role_cfg.get("extra_dirs", []):
+            if d:
+                cmd += ["--add-dir", d]
         cmd += ["--add-dir", self._memory_dir]
         if role_cfg["mcp"]:
             cmd += ["--mcp-config", config.MCP_CONFIG_PATH]

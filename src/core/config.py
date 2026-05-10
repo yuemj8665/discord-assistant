@@ -45,6 +45,10 @@ class Config:
     INFRA_DAILY_REPORT_HOUR: int = int(os.getenv("INFRA_DAILY_REPORT_HOUR", "6"))
     INFRA_DAILY_REPORT_MINUTE: int = int(os.getenv("INFRA_DAILY_REPORT_MINUTE", "15"))
 
+    # 업무 프로젝트
+    WORK_CHANNEL_ID: int = int(os.getenv("WORK_CHANNEL_ID", "0"))
+    WORK_PROJECT_DIR: str = os.getenv("WORK_PROJECT_DIR", "")
+
     # 메일 발송
     MAIL_CHANNEL_ID: int = int(os.getenv("MAIL_CHANNEL_ID", "0"))
     MAIL_RECIPIENT: str = os.getenv("MAIL_RECIPIENT", "")
