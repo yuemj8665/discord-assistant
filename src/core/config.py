@@ -95,6 +95,14 @@ class Config:
                 "infra": {
                     "command": cls.VENV_PYTHON,
                     "args": [str(PROJECT_ROOT / "src/mcp/infra_server.py")]
+                },
+                "mail": {
+                    "command": cls.VENV_PYTHON,
+                    "args": [str(PROJECT_ROOT / "src/mcp/mail_server.py")],
+                    "env": {
+                        "GMAIL_OAUTH_CREDENTIALS": cls.GMAIL_OAUTH_CREDENTIALS,
+                        "MAIL_RECIPIENT": cls.MAIL_RECIPIENT,
+                    }
                 }
             }
         }

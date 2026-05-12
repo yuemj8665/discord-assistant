@@ -17,6 +17,7 @@ SESSIONS_DIR = Path("data/sessions")
 
 ROLE_CONFIGS = {
     "general": {
+        "model": "sonnet",
         "system_prompt": (
             "당신은 명재의 개인 비서입니다. "
             "웹 검색 등 도구 사용 시 사전에 확인을 구하지 말고 즉시 실행하세요. "
@@ -28,6 +29,7 @@ ROLE_CONFIGS = {
         "allowed_tools": "WebSearch,WebFetch",
     },
     "infra": {
+        "model": "sonnet",
         "system_prompt": (
             "당신은 명재의 홈서버 모니터링 전담 비서입니다. "
             "서버 상태 분석 요청이 오면 즉시 get_server_resources와 get_docker_containers 도구를 호출하여 데이터를 수집하세요. "
@@ -40,6 +42,7 @@ ROLE_CONFIGS = {
         "allowed_tools": "mcp__infra__get_server_resources,mcp__infra__get_docker_containers",
     },
     "news": {
+        "model": "sonnet",
         "system_prompt": (
             "당신은 명재의 IT 뉴스 큐레이터입니다. "
             "GeekNews, Hacker News, 요즘IT의 최신 뉴스 목록을 받으면 각 항목을 한국어로 간결하게 요약하세요. "
@@ -51,6 +54,7 @@ ROLE_CONFIGS = {
         "allowed_tools": "WebFetch",
     },
     "work": {
+        "model": "opus",
         "system_prompt": (
             "당신은 명재의 업무 프로젝트 전담 비서입니다. "
             f"담당 프로젝트 디렉토리는 {config.WORK_PROJECT_DIR} 입니다. "
@@ -59,14 +63,18 @@ ROLE_CONFIGS = {
             "모든 도구 사용 권한은 이미 허가되어 있습니다.\n\n"
             f"세션 시작 시 {config.WORK_PROJECT_DIR}/claude.md 파일이 존재하면 반드시 읽어 "
             "해당 파일에 정의된 정책과 규칙을 최우선으로 따르세요.\n\n"
+            "명재가 '메일로 보내줘', '메일로 전달해줘' 등 메일 발송을 요청하면 "
+            f"send_email 도구를 사용해 {config.MAIL_RECIPIENT}로 즉시 발송하세요. "
+            "제목과 본문을 적절히 구성하여 보내면 됩니다.\n\n"
             "응답은 Discord 채팅에 최적화된 형식으로 작성하세요: "
             "코드 블록(```)을 적극 활용하고, 표는 마크다운 테이블 대신 고정폭 텍스트로 작성하세요."
         ),
-        "mcp": False,
-        "allowed_tools": "WebSearch,WebFetch",
+        "mcp": True,
+        "allowed_tools": "WebSearch,WebFetch,mcp__mail__send_email",
         "extra_dirs": [config.WORK_PROJECT_DIR] if config.WORK_PROJECT_DIR else [],
     },
     "calendar": {
+        "model": "sonnet",
         "system_prompt": (
             "당신은 명재의 일정 관리 전담 비서입니다. "
             "Google Calendar 일정 조회, 등록, 수정, 삭제 및 웹 검색을 즉시 실행하세요. "
@@ -201,6 +209,8 @@ class LLMService:
             "--system-prompt", role_cfg["system_prompt"],
             "--dangerously-skip-permissions",
         ]
+        if "model" in role_cfg:
+            cmd += ["--model", role_cfg["model"]]
         if self._session_id:
             cmd += ["--resume", self._session_id]
         for d in config.ALLOWED_DIRS:

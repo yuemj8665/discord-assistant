@@ -114,6 +114,26 @@ Calendar MCP 토큰이 무효화되어 `unauthorized_client` 오류가 1분마�
 
 ---
 
+## [2026-05-12] 역할별 모델 지정 및 work 메일 발송 기능 추가
+
+### 추가
+- `src/mcp/mail_server.py` — `send_email` MCP 툴 신규 생성 (Gmail API 직접 호출)
+- `src/core/config.py` — `generate_mcp_config()`에 mail MCP 서버 등록
+
+### 변경
+- `src/services/llm_service.py` — 역할별 `model` 키 추가 및 `_build_command()`에 `--model` 플래그 적용
+  - work: `opus` (alias — 항상 최신 Opus 자동 사용)
+  - general / infra / news / calendar: `sonnet`
+- `src/services/llm_service.py` — work 역할 MCP 활성화, `mcp__mail__send_email` 툴 추가
+- `src/services/llm_service.py` — work 역할 시스템 프롬프트에 메일 발송 지시 추가
+  - "메일로 보내줘" 등 자연어 요청 시 `send_email` 즉시 호출
+
+### 변경 배경
+- `!mail` 명령어 방식 대신 work 채널 일상 대화 중 메일 발송 가능하도록 개선
+- 신규 모델 출시 시 수동 배포 없이 alias로 자동 최신 버전 사용
+
+---
+
 ## [2026-05-05] 대화 메모리 누적 시스템 추가
 
 ### 추가
