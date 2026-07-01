@@ -2,6 +2,53 @@
 
 ---
 
+## [2026-07-02] 코드 리뷰에서 발견한 잠재 결함 3건 (장애 발생 전 선제 수정)
+
+### 1. mail MCP 첨부 경로 무검증 — 파일 유출 벡터
+- **증상(잠재)**: `send_email`이 첨부 경로를 `exists()`만 확인. work 역할 LLM이 호출하는 도구라, 프롬프트 인젝션 성공 시 `.env`(Discord 토큰·claude 장기 토큰)·`credentials.json` 등을 메일로 유출 가능.
+- **해결**: `resolve()` + 허용 디렉토리 검증(fail-closed) + 숨김 파일/자격증명류 이름 차단 + 25MB 상한. 허용 목록은 `config.generate_mcp_config()`가 `MAIL_ATTACHMENT_ALLOWED_DIRS` env로 주입.
+- **교훈**: LLM에게 노출하는 도구는 "봇이 접근 가능한 범위"를 도구 쪽에서도 강제해야 함. LLM의 판단(시스템 프롬프트)은 보안 경계가 아님.
+
+### 2. 세션 워밍업 401 (launchd Keychain 함정의 잔재)
+- **증상(잠재)**: `SessionScheduler._warmup()`이 토큰 env 주입 없이 claude CLI 직접 호출 → 6/26에 고친 것과 동일한 Keychain 401이 워밍업에서만 재발할 상태였음.
+- **해결**: `_resolve_oauth_token()` 주입 통일.
+- **교훈**: claude CLI 호출 경로가 늘어날 때마다 토큰 주입을 빼먹기 쉬움 → 호출 지점을 llm_service로 모으거나, 새 호출부는 반드시 env 주입 확인.
+
+### 3. test_llm이 운영 세션 파일을 읽음 (테스트 격리 실패)
+- **증상**: `SESSIONS_DIR` 절대경로화 직후 `test_first_ask_builds_command_without_resume` 실패 — 테스트가 실제 `data/sessions/general/session.json`을 로드해 `--resume`이 붙음. (기존에도 운영 데이터에 의존하던 테스트)
+- **해결**: `tmp_path` fixture로 SESSIONS_DIR monkeypatch 격리.
+- **교훈**: 파일 시스템을 만지는 클래스의 테스트는 반드시 tmp_path 격리. 통과하던 테스트도 운영 상태에 따라 결과가 바뀌면 그건 격리 버그.
+
+---
+
+## [2026-06-26] 봇 work/news/infra/general 전 역할 `Claude CLI 오류` (빈 메시지) — 실제로는 401 인증 실패
+
+### 증상
+- Discord work 채널 응답이 `Claude CLI 오류:` (메시지 비어 있음)로만 옴. 이후 news/infra/general 등 전 역할로 확산.
+- 봇 재시작·`!reset`·`claude login` 재로그인 모두 무효.
+- 같은 명령을 터미널에서 직접 실행하면 정상(EXIT 0). **오직 봇(launchd)만** 4초 만에 실패.
+
+### 진단 과정
+1. `ask()`가 실패 시 **stderr만** 로깅 → claude는 한도/인증 오류를 stdout JSON에 담아 보내서 stderr가 비어 깜깜이였음.
+2. stdout까지 로깅하도록 개선하니 실제 원인 노출: `Failed to authenticate. API Error: 401 Invalid authentication credentials`.
+3. 자격증명 파일(`~/.claude/.credentials.json`)은 유효한 토큰 보유(만료 전). 터미널 claude는 성공, 봇만 401.
+4. 가짜 HOME으로 파일·Keychain 차단 후 `CLAUDE_CODE_OAUTH_TOKEN` env만 주입 → EXIT 0. → 봇이 **Keychain을 못 읽는 것**이 근본 원인으로 확정.
+
+### 원인
+macOS에서 claude CLI는 OAuth 자격증명을 **로그인 Keychain**에 저장한다. GUI 로그인 세션(터미널)은 잠금 해제된 Keychain에 접근 가능하지만, **launchd 백그라운드 에이전트(봇)는 Keychain 접근이 막혀** 토큰을 읽지 못하고 401이 난다. (토큰 만료·회전 주기가 도래하며 표면화)
+
+### 해결
+- `llm_service._resolve_oauth_token()` 추가 — `.env`의 `CLAUDE_CODE_OAUTH_TOKEN` 우선, 없으면 `~/.claude/.credentials.json`의 `accessToken`을 읽음.
+- `ask()`가 claude 실행 env에 `CLAUDE_CODE_OAUTH_TOKEN` 주입 → Keychain 우회.
+- 영구 안정화: `claude setup-token`으로 장기 토큰 발급 → `.env`에 등록(만료/refresh 불필요).
+- 부가: `ask()` 오류 로깅을 stdout/exit code까지 확장(재발 시 즉시 원인 식별).
+
+### 교훈
+- launchd 백그라운드 프로세스에서 claude CLI를 호출할 땐 Keychain 의존을 피하고 **토큰을 env로 명시 주입**할 것.
+- subprocess 오류는 stderr만 보면 안 됨 — `--output-format json`은 오류를 stdout에 담을 수 있다.
+
+---
+
 ## [2026-05-10] !mail datetime 비교 오류 — offset-naive vs offset-aware
 
 ### 증상

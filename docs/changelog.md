@@ -2,6 +2,50 @@
 
 ---
 
+## [2026-07-02] 종합 코드 리뷰 후속 — 보안(P1)·상태 영속화(P2)·구조 개선(P3)
+
+### 추가 (P1 — 보안·안정성)
+- **mail MCP 첨부파일 검증** (`src/mcp/mail_server.py`) — 기존에는 `exists()`만 확인해 프롬프트 인젝션 시 임의 파일(.env, 토큰 등) 메일 유출 경로가 열려 있었음.
+  - `resolve()` 후 허용 디렉토리(`MAIL_ATTACHMENT_ALLOWED_DIRS`, mcp_config env로 주입 = ALLOWED_DIRS + WORK_PROJECT_DIR) 내부만 허용 (fail-closed).
+  - 숨김 파일(`.env` 등)·자격증명류 이름(credential/token/secret/private_key) 차단, 25MB 크기 상한.
+- **Gmail 인증 공통 모듈** (`src/services/gmail_client.py` 신규) — mail_service·mail_server에 통째로 복붙돼 있던 토큰 로드/갱신 로직 통합. `creds.refresh()` 실패 시 크래시 대신 명확한 RuntimeError(재인증 안내), 토큰 파일 원자적 쓰기, expiry 파싱 오류 내성.
+- **LLMService 동시성·재시도 안전화** (`llm_service.py`) — 역할 단위 `threading.Lock`(스케줄러·커맨드가 공유하는 infra/news 인스턴스의 세션 경합 방지), 세션 파일 원자적 쓰기(tmp→replace), 세션 만료 재시도 명시적 1회 한도(`_ask_locked(allow_retry)`), `_load_session` 실패 시 로깅.
+- **세션 워밍업 인증 수정** (`session_scheduler.py`) — `_warmup()`이 토큰 env 주입 없이 claude를 직접 호출해 launchd에서 401이 나던 잠재 버그 → `_resolve_oauth_token()` 주입.
+
+### 추가 (P2 — 재시작 내구성)
+- **`src/core/state_store.py` (신규)** — `data/scheduler_state.json`에 스케줄러 상태를 즉시 저장(원자적 쓰기). launchd KeepAlive 재시작 직후 일일 리포트·알림이 중복 발송되던 문제 해소.
+  - notification: 알림한 event_id를 날짜와 함께 영속화 + 2일 지난 항목 자동 정리(무한 증가 방지).
+  - infra/news/session(9키): '오늘 실행함' 날짜를 StateStore에 기록.
+
+### 변경 (P3 — 구조 개선)
+- **`src/scheduler/base_scheduler.py` (신규)** — 스케줄러들이 복붙하던 폴링 루프·'매일 HH:MM 1회' 판정(`_should_run_daily`, StateStore 연동)·2000자 분할 전송(`_send_to`)을 공통화. 전 스케줄러가 상속하도록 리팩토링.
+- **`src/core/timeutil.py` (신규)** — KST·요일명·`now_kst()`·`now_kst_str()` 공통화 (5개 파일 중복 제거).
+- deprecated `asyncio.get_event_loop()` → `get_running_loop()` (text_handler, events, 스케줄러 전체).
+- `SESSIONS_DIR` 상대경로 → PROJECT_ROOT 기준 절대경로 (launchd WorkingDirectory 의존 제거).
+- news/session 스케줄러 LLM 실패 시 침묵 → 채널에 실패 알림 전송 (infra와 동일한 UX로 통일).
+- `log_conversation` 헤더 쓰기 TOCTOU 제거 (append 단일 쓰기).
+
+### 테스트
+- `tests/test_base_scheduler.py` (신규 14케이스) — StateStore 영속/원자성, 일일 게이트 재시작 생존, 분할 전송.
+- `tests/test_llm.py` — 운영 세션 파일을 읽던 격리 문제 수정(tmp_path), 재시도 1회 한도·원자적 저장 케이스 추가.
+- 전체 테스트 통과.
+
+---
+
+## [2026-06-26] claude CLI 401 인증 우회 + Discord 표 금지 규칙 + 에러 가시성
+
+### 추가
+- **claude CLI OAuth 토큰 환경변수 주입** (`config.py`, `llm_service.py`) — launchd 백그라운드 봇이 macOS Keychain의 claude 자격증명을 읽지 못해 발생하던 `401 Invalid authentication credentials`를 우회.
+  - `config.CLAUDE_CODE_OAUTH_TOKEN`(`.env` 우선) → 없으면 `~/.claude/.credentials.json`의 `accessToken`을 런타임에 읽음 (`_resolve_oauth_token()`).
+  - `ask()`가 claude 실행 시 `CLAUDE_CODE_OAUTH_TOKEN` 환경변수로 주입 → Keychain 접근 불가와 무관하게 인증.
+  - `.env`에 `claude setup-token` 장기 토큰 등록(만료/refresh 걱정 제거).
+- **Discord 표 금지 규칙** (`llm_service.py`) — 공통 `_DISCORD_FORMAT_RULE`을 `general`·`calendar` 역할 system_prompt에 추가. 마크다운 표(`|---|`)가 Discord에서 raw로 깨지던 문제 → 목록형/코드블록 유도. (infra·news·work는 기존에 자체 규칙 보유)
+
+### 변경
+- **claude CLI 오류 로깅 개선** (`llm_service.py`) — `ask()`가 실패 시 stderr만 보던 것을, stderr가 비면 stdout JSON(`result`/`error`)에서 실제 원인을 추출하고 exit code를 함께 로깅. 그동안 빈 `Claude CLI 오류:`로 깜깜이였던 401 원인이 이 개선으로 드러남.
+
+---
+
 ## [2026-05-10] work 채널 추가 — 업무 프로젝트 전담 세션
 
 ### 추가
