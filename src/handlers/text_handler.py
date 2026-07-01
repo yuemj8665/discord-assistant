@@ -1,20 +1,12 @@
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
 
 import discord
 
+from src.core.timeutil import now_kst_str
 from src.services.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
-
-KST = timezone(timedelta(hours=9))
-_WEEKDAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
-
-
-def _now_str() -> str:
-    now = datetime.now(KST)
-    return f"{now.strftime('%Y-%m-%d')} ({_WEEKDAYS[now.weekday()]}) {now.strftime('%H:%M')}"
 
 
 class TextHandler:
@@ -34,11 +26,11 @@ class TextHandler:
 
         logger.info("[텍스트:%d] %s: %s", message.channel.id, message.author.display_name, user_input)
 
-        prompt = f"[현재 시각: {_now_str()}]\n{user_input}"
+        prompt = f"[현재 시각: {now_kst_str()}]\n{user_input}"
 
         async with message.channel.typing():
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 response = await loop.run_in_executor(None, llm.ask, prompt)
             except RuntimeError as e:
                 logger.error("LLM 오류: %s", e)

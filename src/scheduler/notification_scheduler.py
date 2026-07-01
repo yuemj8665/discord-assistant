@@ -1,41 +1,34 @@
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
 import discord
 
 from src.core.config import config
+from src.core.timeutil import now_kst, now_kst_str
+from src.scheduler.base_scheduler import BaseScheduler
 from src.services.calendar_service import CalendarService
 from src.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
 
-class NotificationScheduler:
+class NotificationScheduler(BaseScheduler):
     """다가오는 캘린더 일정을 감지해 Discord 채널 + DM으로 알림을 보낸다."""
 
     def __init__(self, bot: discord.Client, llm: LLMService) -> None:
-        self._bot = bot
+        super().__init__(bot)
         self._llm = llm
         self._calendar = CalendarService()
-        self._notified: set[str] = set()  # 이미 알린 event_id 중복 방지
-        self._running = False
+        # event_id → 알림 날짜. 재시작 후 같은 일정 중복 알림 방지를 위해 영속화.
+        self._notified: dict[str, str] = self._state.get("notification.notified", {})
 
     def start(self) -> None:
-        self._running = True
-        asyncio.create_task(self._loop())
+        self._spawn_loop(self._check, 60, immediate=True)
         logger.info("[스케줄러] 캘린더 알림 스케줄러 시작 (%d분 전 알림)", config.NOTIFY_MINUTES_BEFORE)
 
-    async def _loop(self) -> None:
-        while self._running:
-            try:
-                await self._check()
-            except Exception as e:
-                logger.error("[스케줄러] 오류: %s", e)
-            await asyncio.sleep(60)
-
     async def _check(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         events = await loop.run_in_executor(
             None, self._calendar.get_upcoming_events, config.NOTIFY_MINUTES_BEFORE
         )
@@ -45,20 +38,15 @@ class NotificationScheduler:
             if event_id in self._notified:
                 continue
 
-            self._notified.add(event_id)
+            self._mark_notified(event_id)
 
             title = event.get("summary", "제목 없음")
             start = event.get("start", {})
             start_time = start.get("dateTime") or start.get("date", "")
             description = event.get("description", "")
 
-            KST = timezone(timedelta(hours=9))
-            weekdays = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
-            now = datetime.now(KST)
-            now_str = f"{now.strftime('%Y-%m-%d')} ({weekdays[now.weekday()]}) {now.strftime('%H:%M')}"
-
             prompt = (
-                f"현재 시각은 {now_str}이야. 곧 일정이 있어. 명재에게 자연스럽게 알려줘.\n"
+                f"현재 시각은 {now_kst_str()}이야. 곧 일정이 있어. 명재에게 자연스럽게 알려줘.\n"
                 f"제목: {title}\n"
                 f"시작: {start_time}\n"
                 f"내용: {description}\n"
@@ -70,13 +58,16 @@ class NotificationScheduler:
 
             await self._send(response)
 
+    def _mark_notified(self, event_id: str) -> None:
+        today = now_kst().strftime("%Y-%m-%d")
+        self._notified[event_id] = today
+        # 알림 윈도우보다 충분히 오래된 항목은 정리해 무한 증가를 막는다.
+        cutoff = (now_kst() - timedelta(days=2)).strftime("%Y-%m-%d")
+        self._notified = {k: v for k, v in self._notified.items() if v >= cutoff}
+        self._state.set("notification.notified", self._notified)
+
     async def _send(self, message: str) -> None:
-        mention = f"<@{config.DISCORD_USER_ID}>"
-
-        # 채널 전송 (멘션 포함)
         if config.NOTIFY_CHANNEL_ID:
-            channel = self._bot.get_channel(config.NOTIFY_CHANNEL_ID)
-            if channel:
-                await channel.send(f"{mention}\n{message}")
-                logger.info("[스케줄러] 채널 알림 전송 완료")
-
+            mention = f"<@{config.DISCORD_USER_ID}>"
+            await self._send_to(config.NOTIFY_CHANNEL_ID, f"{mention}\n{message}")
+            logger.info("[스케줄러] 채널 알림 전송 완료")

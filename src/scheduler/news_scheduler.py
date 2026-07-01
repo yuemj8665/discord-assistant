@@ -1,16 +1,15 @@
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
 
 import feedparser
 import discord
 
 from src.core.config import config
+from src.core.timeutil import now_kst_str
+from src.scheduler.base_scheduler import BaseScheduler
 from src.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
-
-KST = timezone(timedelta(hours=9))
 
 RSS_FEEDS = {
     "GeekNews": "https://feeds.feedburner.com/geeknews-feed",
@@ -19,47 +18,35 @@ RSS_FEEDS = {
 }
 
 
-class NewsScheduler:
+class NewsScheduler(BaseScheduler):
     """매일 아침 IT 뉴스를 수집하고 LLM이 요약해서 Discord 채널에 전송한다."""
 
     def __init__(self, bot: discord.Client, news_llm: LLMService) -> None:
-        self._bot = bot
+        super().__init__(bot)
         self._llm = news_llm
-        self._running = False
-        self._last_sent_date: str | None = None
 
     def start(self) -> None:
-        self._running = True
-        asyncio.create_task(self._news_loop())
+        self._spawn_loop(self._daily_tick, 60)
         logger.info("[NewsScheduler] 시작 — 매일 %d시 KST 뉴스 전송", config.NEWS_HOUR)
 
-    async def _news_loop(self) -> None:
-        while self._running:
-            await asyncio.sleep(60)
-            try:
-                now = datetime.now(KST)
-                today = now.strftime("%Y-%m-%d")
-                if now.hour == config.NEWS_HOUR and self._last_sent_date != today:
-                    self._last_sent_date = today
-                    await self._send_news()
-            except Exception as e:
-                logger.error("[NewsScheduler] 루프 오류: %s", e)
+    async def _daily_tick(self) -> None:
+        if self._should_run_daily("news.daily", config.NEWS_HOUR, 0):
+            await self._send_news()
 
     async def send_now(self) -> None:
         """즉시 뉴스를 수집하고 전송한다. !news 명령어용."""
         await self._send_news()
 
     async def _send_news(self) -> None:
-        loop = asyncio.get_event_loop()
-        now = datetime.now(KST)
-        weekdays = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
-        now_str = f"{now.strftime('%Y-%m-%d')} ({weekdays[now.weekday()]}) {now.strftime('%H:%M')}"
+        loop = asyncio.get_running_loop()
+        now_str = now_kst_str()
 
         logger.info("[NewsScheduler] 뉴스 수집 시작")
         news_text = await loop.run_in_executor(None, self._fetch_all_feeds)
 
         if not news_text:
             logger.error("[NewsScheduler] 뉴스 수집 실패 — 전송 중단")
+            await self._send("⚠️ 오늘 뉴스 수집에 실패했습니다. RSS 피드 상태를 확인해주세요.")
             return
 
         prompt = (
@@ -87,6 +74,7 @@ class NewsScheduler:
             logger.info("[NewsScheduler] 트렌드 분석 전송 완료")
         except Exception as e:
             logger.error("[NewsScheduler] LLM 요약 실패: %s", e)
+            await self._send(f"⚠️ 뉴스 요약 생성에 실패했습니다: {e}")
 
     def _fetch_all_feeds(self) -> str:
         """모든 RSS 피드를 파싱해서 뉴스 목록 텍스트로 반환한다."""
@@ -111,12 +99,4 @@ class NewsScheduler:
         return "\n\n".join(sections)
 
     async def _send(self, message: str) -> None:
-        channel = self._bot.get_channel(config.NEWS_CHANNEL_ID)
-        if not channel:
-            logger.error("[NewsScheduler] 채널을 찾을 수 없음: %d", config.NEWS_CHANNEL_ID)
-            return
-        if len(message) <= 2000:
-            await channel.send(message)
-        else:
-            for chunk in [message[i:i + 2000] for i in range(0, len(message), 2000)]:
-                await channel.send(chunk)
+        await self._send_to(config.NEWS_CHANNEL_ID, message)

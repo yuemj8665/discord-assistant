@@ -76,6 +76,17 @@ class Config:
         "VENV_PYTHON", str(PROJECT_ROOT / "venv/bin/python3")
     )
 
+    # claude CLI 인증
+    # launchd(백그라운드)로 띄운 봇은 macOS Keychain의 claude 자격증명을 못 읽어
+    # 401(Invalid authentication credentials)이 난다. 환경변수로 토큰을 직접 주입해 우회한다.
+    # 우선순위: .env의 CLAUDE_CODE_OAUTH_TOKEN(권장: `claude setup-token` 장기 토큰)
+    #          → 없으면 ~/.claude/.credentials.json의 accessToken을 런타임에 읽어 사용.
+    CLAUDE_CODE_OAUTH_TOKEN: str = os.getenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+    CLAUDE_CREDENTIALS_PATH: str = os.getenv(
+        "CLAUDE_CREDENTIALS_PATH",
+        str(Path.home() / ".claude" / ".credentials.json"),
+    )
+
     @classmethod
     def validate(cls) -> None:
         if not cls.DISCORD_TOKEN:
@@ -102,6 +113,10 @@ class Config:
                     "env": {
                         "GMAIL_OAUTH_CREDENTIALS": cls.GMAIL_OAUTH_CREDENTIALS,
                         "MAIL_RECIPIENT": cls.MAIL_RECIPIENT,
+                        # 첨부파일은 봇이 접근 가능한 디렉토리 안의 파일만 허용
+                        "MAIL_ATTACHMENT_ALLOWED_DIRS": ",".join(
+                            d for d in [*cls.ALLOWED_DIRS, cls.WORK_PROJECT_DIR] if d
+                        ),
                     }
                 }
             }

@@ -1,12 +1,12 @@
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
 import discord
 from discord.ext import commands
 
+from src.core.timeutil import now_kst, now_kst_str
 from src.handlers.text_handler import TextHandler
 from src.scheduler.infra_scheduler import InfraScheduler
 from src.scheduler.news_scheduler import NewsScheduler
@@ -15,9 +15,6 @@ from src.scheduler.session_scheduler import SessionScheduler
 from src.services import git_service
 from src.services.mail_service import MailService
 from src.services.session_manager import SessionManager
-
-KST = timezone(timedelta(hours=9))
-_WEEKDAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +43,15 @@ def register_events(
                 name="명령을 기다리는 중...",
             )
         )
+        # 슬래시 명령을 각 길드에 즉시 동기화(전역 동기화는 전파가 느려 길드 단위로 처리).
+        for guild in bot.guilds:
+            try:
+                bot.tree.copy_global_to(guild=guild)
+                synced = await bot.tree.sync(guild=guild)
+                logger.info("[slash] '%s' 길드에 %d개 명령 동기화", guild.name, len(synced))
+            except Exception as e:
+                logger.error("[slash] '%s' 동기화 실패: %s", guild.name, e)
+
         scheduler.start()
         infra_scheduler.start()
         news_scheduler.start()
@@ -113,7 +119,7 @@ def register_events(
             return
 
         async with ctx.typing():
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             try:
                 result = await loop.run_in_executor(
                     None, _build_and_send_mail,
@@ -153,8 +159,8 @@ def register_events(
             else git_service.get_changed_files(repo_path, last_commit)
         )
 
-        now = datetime.now(KST)
-        now_str = f"{now.strftime('%Y-%m-%d')} ({_WEEKDAYS[now.weekday()]}) {now.strftime('%H:%M')}"
+        now = now_kst()
+        now_str = now_kst_str()
 
         llm_prompt = (
             f"다음은 Git 레포지토리 `{repo_name}`의 변경 사항이야.\n"

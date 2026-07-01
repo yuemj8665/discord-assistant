@@ -2,18 +2,47 @@ import os
 import subprocess
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+import threading
 from pathlib import Path
 from typing import Optional
 
-from src.core.config import config
-
-KST = timezone(timedelta(hours=9))
-_WEEKDAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
+from src.core.config import PROJECT_ROOT, config
+from src.core.timeutil import WEEKDAYS, now_kst
 
 logger = logging.getLogger(__name__)
 
-SESSIONS_DIR = Path("data/sessions")
+# launchd WorkingDirectory에 의존하지 않도록 프로젝트 루트 기준 절대경로 사용
+SESSIONS_DIR = PROJECT_ROOT / "data" / "sessions"
+
+
+def _resolve_oauth_token() -> Optional[str]:
+    """claude CLI에 주입할 OAuth 토큰을 해석한다.
+
+    launchd 백그라운드 프로세스는 macOS Keychain의 claude 자격증명을 읽지 못해
+    401이 난다. .env의 장기 토큰을 우선 사용하고, 없으면 credentials.json의
+    accessToken을 매 호출 시점에 읽어 환경변수로 주입한다(파일이 갱신되면 자동 반영).
+    """
+    if config.CLAUDE_CODE_OAUTH_TOKEN:
+        return config.CLAUDE_CODE_OAUTH_TOKEN
+    try:
+        data = json.loads(Path(config.CLAUDE_CREDENTIALS_PATH).read_text())
+        oauth = data.get("claudeAiOauth", data)
+        return oauth.get("accessToken") or None
+    except Exception:
+        return None
+
+# Discord는 마크다운 테이블(|---|)을 렌더링하지 못해 raw 텍스트로 깨져 보인다.
+# 모든 역할 공통으로 표 대신 목록형 마크다운을 사용하도록 강제한다.
+_DISCORD_FORMAT_RULE = (
+    "\n\n[출력 형식 — Discord 채팅]\n"
+    "Discord는 마크다운 표(| 항목 | 금액 | 같은 |---| 테이블)를 렌더링하지 못해 "
+    "파이프 문자가 그대로 노출되어 매우 보기 불편합니다. "
+    "절대 마크다운 테이블을 사용하지 마세요. 대신 다음을 사용하세요:\n"
+    "- 항목 나열은 `- 라벨: 값` 형태의 글머리표 목록으로 작성\n"
+    "- 정렬된 수치 비교가 꼭 필요하면 코드블록(```) 안에 고정폭 텍스트로 작성\n"
+    "- 강조는 **굵게**, 구분은 이모지와 빈 줄을 활용\n"
+    "- 금액·수치는 천 단위 콤마를 사용"
+)
 
 ROLE_CONFIGS = {
     "general": {
@@ -24,6 +53,7 @@ ROLE_CONFIGS = {
             "모든 도구 사용 권한은 이미 허가되어 있습니다.\n\n"
             "세션 시작 시 반드시 data/sessions/general/memory.md를 읽어 명재에 대한 맥락을 파악하세요. "
             "오늘 날짜의 data/sessions/general/daily/YYYY-MM-DD.md 파일이 있으면 함께 읽어 이전 대화 흐름을 이어가세요."
+            + _DISCORD_FORMAT_RULE
         ),
         "mcp": False,
         "allowed_tools": "WebSearch,WebFetch",
@@ -65,7 +95,8 @@ ROLE_CONFIGS = {
             "해당 파일에 정의된 정책과 규칙을 최우선으로 따르세요.\n\n"
             "명재가 '메일로 보내줘', '메일로 전달해줘' 등 메일 발송을 요청하면 "
             f"send_email 도구를 사용해 {config.MAIL_RECIPIENT}로 즉시 발송하세요. "
-            "제목과 본문을 적절히 구성하여 보내면 됩니다.\n\n"
+            "제목과 본문을 적절히 구성하여 보내면 됩니다. "
+            "파일을 첨부해달라고 하면 attachments 파라미터에 절대 경로 목록을 전달하세요.\n\n"
             "응답은 Discord 채팅에 최적화된 형식으로 작성하세요: "
             "코드 블록(```)을 적극 활용하고, 표는 마크다운 테이블 대신 고정폭 텍스트로 작성하세요."
         ),
@@ -86,6 +117,7 @@ ROLE_CONFIGS = {
             f"- 개인 관련: {config.CALENDAR_ID_PERSONAL}\n"
             f"- 분류 불명확: {config.CALENDAR_ID_DEFAULT}\n"
             "calendarId 파라미터에 위 ID를 반드시 지정하세요."
+            + _DISCORD_FORMAT_RULE
         ),
         "mcp": True,
         "allowed_tools": (
@@ -109,17 +141,27 @@ class LLMService:
         self._role = role
         self._session_file = SESSIONS_DIR / role / "session.json"
         self._memory_dir = str(SESSIONS_DIR / role)
+        # infra/news 인스턴스는 스케줄러와 커맨드가 공유하므로,
+        # 세션 ID 갱신·파일 쓰기가 겹치지 않도록 역할 단위로 직렬화한다.
+        self._lock = threading.Lock()
         self._session_id: Optional[str] = self._load_session()
         if self._session_id:
             logger.info("[LLM:%s] 저장된 세션 복원: %s", self._role, self._session_id)
 
     def ask(self, message: str) -> str:
+        with self._lock:
+            return self._ask_locked(message, allow_retry=True)
+
+    def _ask_locked(self, message: str, allow_retry: bool) -> str:
         cmd = self._build_command(message)
         logger.debug("[LLM:%s] Claude CLI 실행: %s", self._role, " ".join(cmd[:6]) + " ...")
 
         try:
             env = os.environ.copy()
             env["GOOGLE_OAUTH_CREDENTIALS"] = config.GOOGLE_OAUTH_CREDENTIALS
+            token = _resolve_oauth_token()
+            if token:
+                env["CLAUDE_CODE_OAUTH_TOKEN"] = token
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -137,12 +179,26 @@ class LLMService:
 
         if result.returncode != 0:
             stderr = result.stderr.strip()
-            if self._session_id and "No conversation found" in stderr:
+            if allow_retry and self._session_id and "No conversation found" in stderr:
                 logger.warning("[LLM:%s] 세션 만료. 새 세션으로 재시도", self._role)
                 self._session_id = None
-                return self.ask(message)
-            logger.error("[LLM:%s] Claude CLI 오류: %s", self._role, stderr)
-            raise RuntimeError(f"Claude CLI 오류: {stderr}")
+                return self._ask_locked(message, allow_retry=False)
+            # claude는 한도 초과 등 일부 오류를 stderr가 아닌 stdout(JSON)에 담는다.
+            # stderr가 비어 있으면 stdout에서 실제 원인을 끌어와 로깅·표시한다.
+            detail = stderr
+            if not detail:
+                stdout = result.stdout.strip()
+                try:
+                    data = json.loads(stdout)
+                    detail = (data.get("result") or data.get("error")
+                              or json.dumps(data, ensure_ascii=False))[:800]
+                except (json.JSONDecodeError, AttributeError):
+                    detail = stdout[:800]
+            logger.error(
+                "[LLM:%s] Claude CLI 오류 (exit=%s): %s",
+                self._role, result.returncode, detail or "(stdout·stderr 모두 비어 있음)",
+            )
+            raise RuntimeError(f"Claude CLI 오류: {detail or '(빈 응답)'}")
 
         try:
             data = json.loads(result.stdout)
@@ -160,41 +216,47 @@ class LLMService:
         return response_text
 
     def log_conversation(self, user_msg: str, assistant_msg: str) -> None:
-        now = datetime.now(KST)
+        now = now_kst()
         daily_dir = SESSIONS_DIR / self._role / "daily"
         daily_dir.mkdir(parents=True, exist_ok=True)
         daily_file = daily_dir / f"{now.strftime('%Y-%m-%d')}.md"
 
+        header = ""
         if not daily_file.exists():
-            daily_file.write_text(
-                f"## {now.strftime('%Y-%m-%d')} ({_WEEKDAYS[now.weekday()]})\n\n",
-                encoding="utf-8",
-            )
+            header = f"## {now.strftime('%Y-%m-%d')} ({WEEKDAYS[now.weekday()]})\n\n"
 
         entry = (
             f"### [{now.strftime('%H:%M')}] 명재\n{user_msg}\n\n"
             f"### [{now.strftime('%H:%M')}] Claude\n{assistant_msg}\n\n"
         )
+        # append 모드 단일 쓰기 — exists() 확인과 쓰기 사이의 경합(TOCTOU)을 피한다.
         with daily_file.open("a", encoding="utf-8") as f:
-            f.write(entry)
+            f.write(header + entry)
 
     @property
     def daily_dir(self) -> Path:
         return SESSIONS_DIR / self._role / "daily"
 
     def reset_session(self) -> None:
-        self._session_id = None
-        self._session_file.unlink(missing_ok=True)
+        with self._lock:
+            self._session_id = None
+            self._session_file.unlink(missing_ok=True)
         logger.info("[LLM:%s] 세션 초기화됨", self._role)
 
     def _save_session(self) -> None:
         self._session_file.parent.mkdir(parents=True, exist_ok=True)
-        self._session_file.write_text(json.dumps({"session_id": self._session_id}))
+        # 임시 파일에 쓴 뒤 원자적으로 교체 — 쓰기 도중 크래시해도 파일이 깨지지 않는다.
+        tmp = self._session_file.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps({"session_id": self._session_id}))
+        tmp.replace(self._session_file)
 
     def _load_session(self) -> Optional[str]:
+        if not self._session_file.exists():
+            return None
         try:
             return json.loads(self._session_file.read_text()).get("session_id")
-        except Exception:
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("[LLM:%s] 세션 파일 읽기 실패 — 새 세션으로 시작: %s", self._role, e)
             return None
 
     @property

@@ -1,19 +1,11 @@
 import base64
-import json
 import logging
-from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from pathlib import Path
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+from src.services.gmail_client import GMAIL_TOKEN_PATH, build_gmail_service
 
 logger = logging.getLogger(__name__)
-
-GMAIL_TOKEN_PATH = Path("data/gmail_token.json")
-GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
 
 class MailService:
@@ -27,41 +19,8 @@ class MailService:
         return GMAIL_TOKEN_PATH.exists()
 
     def _get_service(self):
-        if self._service:
-            return self._service
-
-        if not GMAIL_TOKEN_PATH.exists():
-            raise RuntimeError(
-                "Gmail 토큰이 없습니다. "
-                "venv/bin/python3 scripts/gmail_auth.py 를 먼저 실행하세요."
-            )
-
-        token_data = json.loads(GMAIL_TOKEN_PATH.read_text())
-        cred_data = json.loads(Path(self._credentials_path).read_text())
-        client_info = cred_data.get("installed") or cred_data.get("web", {})
-
-        expiry_str = token_data.get("expiry")
-        expiry = datetime.fromisoformat(expiry_str) if expiry_str else None
-
-        creds = Credentials(
-            token=token_data.get("access_token"),
-            refresh_token=token_data.get("refresh_token"),
-            token_uri=client_info.get("token_uri", "https://oauth2.googleapis.com/token"),
-            client_id=client_info["client_id"],
-            client_secret=client_info["client_secret"],
-            scopes=GMAIL_SCOPES,
-            expiry=expiry,
-        )
-        if not creds.valid:
-            creds.refresh(Request())
-            GMAIL_TOKEN_PATH.write_text(json.dumps({
-                "access_token": creds.token,
-                "refresh_token": creds.refresh_token,
-                "expiry": creds.expiry.isoformat() if creds.expiry else None,
-            }))
-            logger.info("[메일] access_token 갱신 완료")
-
-        self._service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+        if self._service is None:
+            self._service = build_gmail_service(self._credentials_path)
         return self._service
 
     def send(self, to: str, subject: str, body: str) -> None:
